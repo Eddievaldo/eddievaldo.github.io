@@ -1,1 +1,1 @@
-[some stuff](https://eddievaldo.github.com/readme)
+[some stuff](README.md)
