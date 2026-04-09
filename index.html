@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Breaker: Level Up</title>
+    <style>
+        body { background: #0a0a0a; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; color: #00f2ff; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+        canvas { background: #000; border: 3px solid #00f2ff; box-shadow: 0 0 30px #00f2ff55; }
+        .ui { width: 600px; display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 20px; text-shadow: 0 0 10px #00f2ff; }
+        #msg { position: absolute; font-size: 40px; display: none; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<div id="msg">LEVEL COMPLETE</div>
+
+<div class="ui">
+    <span>SCORE: <span id="score">0</span></span>
+    <span>LEVEL: <span id="level">1</span></span>
+</div>
+<canvas id="gameCanvas" width="600" height="400"></canvas>
+
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
+    const levelEl = document.getElementById("level");
+    const msgEl = document.getElementById("msg");
+
+    // Level Designs (0 = empty, 1 = brick)
+    const levelMaps = [
+        [
+            [0,0,1,1,1,1,0,0],
+            [0,1,1,1,1,1,1,0],
+            [1,1,1,1,1,1,1,1]
+        ],
+        [
+            [1,0,1,0,1,0,1,0],
+            [0,1,0,1,0,1,0,1],
+            [1,0,1,0,1,0,1,0],
+            [0,1,0,1,0,1,0,1]
+        ],
+        [
+            [1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,0,1],
+            [1,1,1,1,1,1,1,1]
+        ]
+    ];
+
+    let currentLevel = 0;
+    let score = 0;
+    let particles = [];
+    let shakeUntil = 0;
+    let gameRunning = true;
+
+    // Ball & Paddle
+    let ball = { x: 300, y: 350, dx: 4, dy: -4, radius: 6, speed: 4 };
+    let paddle = { w: 100, h: 12, x: 250 };
+
+    // Bricks logic
+    const brickConfig = { w: 65, h: 20, pad: 8, offTop: 60, offLeft: 20 };
+    let bricks = [];
+
+    function initLevel(lvlIdx) {
+        bricks = [];
+        const layout = levelMaps[lvlIdx];
+        for(let r=0; r < layout.length; r++) {
+            for(let c=0; c < layout[r].length; c++) {
+                if(layout[r][c] === 1) {
+                    bricks.push({
+                        x: c * (brickConfig.w + brickConfig.pad) + brickConfig.offLeft,
+                        y: r * (brickConfig.h + brickConfig.pad) + brickConfig.offTop,
+                        color: `hsl(${lvlIdx * 90 + r * 30}, 100%, 60%)`,
+                        status: 1
+                    });
+                }
+            }
+        }
+        // Reset ball position
+        ball.x = 300; ball.y = 350;
+        ball.speed += 0.5; // Get faster every level
+        ball.dy = -ball.speed;
+        ball.dx = ball.speed * (Math.random() > 0.5 ? 1 : -1);
+        levelEl.innerText = lvlIdx + 1;
+    }
+
+    document.addEventListener("mousemove", e => {
+        let relX = e.clientX - canvas.offsetLeft;
+        if(relX > 0 && relX < canvas.width) paddle.x = relX - paddle.w/2;
+    });
+
+    function createParticles(x, y, color) {
+        for(let i=0; i<6; i++) {
+            particles.push({ x, y, dx: (Math.random()-0.5)*5, dy: (Math.random()-0.5)*5, life: 25, color });
+        }
+    }
+
+    function update() {
+        if(!gameRunning) return;
+
+        ball.x += ball.dx;
+        ball.y += ball.dy;
+
+        // Walls
+        if(ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) ball.dx *= -1;
+        if(ball.y - ball.radius < 0) ball.dy *= -1;
+
+        // Paddle
+        if(ball.y + ball.radius > canvas.height - 20) {
+            if(ball.x > paddle.x && ball.x < paddle.x + paddle.w) {
+                ball.dy = -Math.abs(ball.dy);
+                ball.dx = (ball.x - (paddle.x + paddle.w/2)) * 0.25;
+                shakeUntil = Date.now() + 80;
+            } else if(ball.y > canvas.height) {
+                alert("GAME OVER");
+                document.location.reload();
+            }
+        }
+
+        // Bricks
+        bricks.forEach(b => {
+            if(b.status === 1) {
+                if(ball.x > b.x && ball.x < b.x + brickConfig.w && ball.y > b.y && ball.y < b.y + brickConfig.h) {
+                    ball.dy *= -1;
+                    b.status = 0;
+                    score += 15;
+                    scoreEl.innerText = score;
+                    createParticles(b.x + brickConfig.w/2, b.y + brickConfig.h/2, b.color);
+                    shakeUntil = Date.now() + 40;
+                }
+            }
+        });
+
+        // Check Level Win
+        if(bricks.every(b => b.status === 0)) {
+            nextLevel();
+        }
+
+        // Particles
+        particles.forEach((p, i) => {
+            p.x += p.dx; p.y += p.dy; p.life--;
+            if(p.life <= 0) particles.splice(i, 1);
+        });
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function nextLevel() {
+        gameRunning = false;
+        currentLevel++;
+        if(currentLevel < levelMaps.length) {
+            msgEl.style.display = "block";
+            setTimeout(() => {
+                msgEl.style.display = "none";
+                initLevel(currentLevel);
+                gameRunning = true;
+                update();
+            }, 2000);
+        } else {
+            alert("ULTIMATE CHAMPION! YOU BEAT ALL LEVELS!");
+            document.location.reload();
+        }
+    }
+
+    function draw() {
+        let ox = 0, oy = 0;
+        if(Date.now() < shakeUntil) {
+            ox = (Math.random()-0.5)*6; oy = (Math.random()-0.5)*6;
+        }
+        ctx.setTransform(1, 0, 0, 1, ox, oy);
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Bricks
+        bricks.forEach(b => {
+            if(b.status === 1) {
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x, b.y, brickConfig.w, brickConfig.h);
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(b.x, b.y, brickConfig.w, brickConfig.h);
+            }
+        });
+
+        // Paddle
+        ctx.fillStyle = "#00f2ff";
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "#00f2ff";
+        ctx.fillRect(paddle.x, canvas.height - 20, paddle.w, paddle.h);
+        ctx.shadowBlur = 0;
+
+        // Ball
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2);
+        ctx.fill();
+
+        // Particles
+        particles.forEach(p => {
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, 2, 2);
+        });
+    }
+
+    initLevel(currentLevel);
+    update();
+</script>
+
+</body>
+</html>
